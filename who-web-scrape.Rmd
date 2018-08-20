@@ -1,6 +1,7 @@
 ---
 title: "who-web-scrape"
-output: html_document
+output: github_document
+always_allow_html: yes
 editor_options: 
   chunk_output_type: console
 ---
@@ -154,7 +155,7 @@ excel_path %>%
 
 Ok, now we have reported cases of measles as well as estimated vaccination coverage for measles. Let's use `rnaturalearth` to grab the global mapping data and then employ `leaflet` to build an interactive choropleth map to visualize 2017 reported cases and immunization coverage for measles.
 
-```{r, message=FALSE, warning=FALSE}
+```{r, message=FALSE, warning=FALSE, eval=FALSE}
 # prep cases and coverage data for map
 measles_cases_map_dta <- measles_cases_df %>% 
   mutate(iso_code = countrycode(country, "country.name", "iso3c"),    # add iso3 codes as key for join to naturalearth data
@@ -214,12 +215,8 @@ leaflet(data = map_df) %>%
     stroke = FALSE,
     popup = measles_cases_lbl
     )
-  # addLegend(pal = measles_pal, values = ~map_df$cases,
-  #           title = str_glue("Reported cases<br>({unique(map_df$disease)})"),
-  #           "bottomright", opacity = 0.7,
-  #           labFormat = labelFormat(
-  #             transform = function(cases) (cases / 1000),
-  #             big.mark = ",", suffix = "k"
-  #             )
-  #           )
 ```
+
+As the rmarkdown `github_document` output format does not support interactive `leaflet` maps, here is a static image of the map generated from the above code:
+
+![](images/who_measles_leaflet_static.png)
