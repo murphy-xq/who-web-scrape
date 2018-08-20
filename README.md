@@ -1,5 +1,5 @@
 # who-web-scrape
-🗄️🐿️ **Scrape data from web and map**
+🗄️🐿️ **Scrape data from web and create map**
 
 This project works through processes to:
 * Scrape data from the web using `rvest`
