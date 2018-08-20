@@ -60,7 +60,7 @@ measles_df
 #> #   `1997` <chr>, `1996` <chr>, `1995` <chr>, `1990` <chr>, `1985` <chr>, `1980` <chr>
 ```
 
-#### Clean
+#### Clean up the dataframe
 
 Now that we have a dataframe of the reported measles cases, we want to
 do some cleaning. First, there are quite a lot of empty strings in the
@@ -91,11 +91,11 @@ clean_web_table <- function(df) {
 
 #### Scrape, clean, and compile all disease incidence tables
 
-Now that we have successfully scraped the measles data, let’s adapt our
-approach so that we can scrape all available data. To start, we build a
-vector containing each of the available disease tables. Using `purrr`,
-we parse each page’s html content and table as before and use `map_df`
-and `clean_web_table` to pull the output into a tidy
+Let’s now adapt our approach so that we can scrape all the available
+incidence data. To start, we build a vector containing each of the
+available disease tables. Using `purrr`, we parse each page’s html
+content and table as before and use `map_df` and `clean_web_table` to
+pull the output into a tidy
 dataframe.
 
 ``` r
@@ -180,7 +180,7 @@ read_excel(here("data","coverage_estimates_series.xls"), sheet = "MCV1")
 #> #   `1987` <dbl>, `1986` <dbl>, `1985` <dbl>, `1984` <dbl>, `1983` <dbl>, `1982` <dbl>,
 #> #   `1981` <dbl>, `1980` <dbl>
 
-# let's reshape, clean the table, and create a dataframe for use later
+# let's reshape, clean the table, and create a dataframe for later use
 measles_cvg_df <- read_excel(here("data","coverage_estimates_series.xls"), sheet = "MCV1") %>% 
   gather(year, coverage, -c(1:4)) %>%
   na_if("") %>%
@@ -270,7 +270,7 @@ download.file("https://opendata.socrata.com/api/views/mnkm-8ram/rows.csv?accessT
 lat_lon <- read_csv(here("data", "lat_lon.csv")) %>% 
   select(iso_a3 = `Alpha-3 code`, lat = `Latitude (average)`, lon = `Longitude (average)`)
 
-# load natural earth data and join measles and lat/lon data
+# load naturalearth data
 map_df <- ne_countries(scale = 50, returnclass = "sf") %>% 
   # address some missing iso3 codes
   mutate(iso_a3 = replace(iso_a3, sovereignt == "France", "FRA"),
@@ -282,7 +282,7 @@ map_df <- ne_countries(scale = 50, returnclass = "sf") %>%
   left_join(., measles_cvg_map_dta, by = c("iso_a3" = "iso_code")) %>% 
   left_join(., lat_lon, by = "iso_a3")
 
-# set palette and popup parameters
+# set palette and tooltip formats
 measles_cvg_pal   <- colorNumeric(palette = "RdYlGn", domain = map_df$coverage)
 measles_cases_lbl <- str_glue("<b>{map_df$country} (2017)</b><br>
                               Reported cases of measles: {map_df$cases}")
