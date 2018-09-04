@@ -251,11 +251,12 @@ choropleth map to visualize 2017 reported cases and immunization
 coverage for measles.
 
 ``` r
-# prep cases and coverage data for map
+# prep 2017 cases and coverage data for map
 measles_cases_map_dta <- measles_cases_df %>% 
-  mutate(iso_code = countrycode(country, "country.name", "iso3c"),    # add iso3 codes as key for join to naturalearth data
+  mutate(iso_code = countrycode(country, "country.name", "iso3c"),    # key for naturalearth join
          iso_code = replace(iso_code, country == "Eswatini", "SWZ"),  # previously Swaziland
-         bubble_radius = findInterval(cases, c(0,25,50,100,500,1000,5000,10000,20000,40000))*2) %>%  # determines bubble size
+         # set bubble size
+         bubble_radius = findInterval(cases, c(0,25,50,100,500,1000,5000,10000,20000,40000))*2) %>%
   filter(year == 2017) %>%
   select(-country, -year)
 
@@ -283,11 +284,14 @@ map_df <- ne_countries(scale = 50, returnclass = "sf") %>%
   left_join(., lat_lon, by = "iso_a3")
 
 # set palette and tooltip formats
-measles_cvg_pal   <- colorNumeric(palette = "RdYlGn", domain = map_df$coverage)
-measles_cases_lbl <- str_glue("<b>{map_df$country} (2017)</b><br>
-                              Reported cases of measles: {map_df$cases}")
-measles_cvg_lbl   <- str_glue("<b>{map_df$country} (2017)</b><br>
-                              Measles (MCV1) coverage: {map_df$coverage}%")
+cvg_pal <- colorBin(palette = "RdYlGn", 
+                    domain = map_df$coverage,
+                    bins = c(0,49,79,89,100),
+                    reverse = FALSE)
+cases_lbl <- str_glue("<b>{map_df$country}</b><br>
+                      Reported cases of measles (2017): {map_df$cases}")
+cvg_lbl   <- str_glue("<b>{map_df$country}</b><br>
+                      MCV1 coverage (2017): {map_df$coverage}%")
 
 # build map
 leaflet(data = map_df) %>%
@@ -295,11 +299,11 @@ leaflet(data = map_df) %>%
   addProviderTiles("CartoDB.Positron", group = "Simple") %>%
   # immunization coverage
   addPolygons(
-    fillColor = ~measles_cvg_pal(coverage),
+    fillColor = ~cvg_pal(coverage),
     weight = 1,
     color = "white",
     fillOpacity = 0.8,
-    popup = measles_cvg_lbl
+    popup = cvg_lbl
     ) %>% 
   # reported cases
   addCircleMarkers(
@@ -308,7 +312,19 @@ leaflet(data = map_df) %>%
     fillOpacity = 0.7,
     color = "purple",
     stroke = FALSE,
-    popup = measles_cases_lbl
+    popup = cases_lbl
+    ) %>% 
+  addLegend(
+    pal = cvg_pal, 
+    values = ~map_df$coverage,
+    title = "Measles (MCV1) coverage, 2017",
+    position = "topright", 
+    opacity = 0.7,
+    na.label = "Not available",
+    labFormat = labelFormat(
+      suffix = "%",
+      transform = function(coverage) sort(coverage, decreasing = FALSE)
+      )
     )
 ```
 
