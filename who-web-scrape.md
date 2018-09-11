@@ -71,18 +71,20 @@ Lastly, we want to convert the data type for cases and years from
 
 ``` r
 measles_cases_df <- measles_df %>% 
-  na_if("") %>%                      # convert blanks to explicit NAs
+  na_if("") %>%                      # coerce blanks to explicit NAs
   rename(country = 1) %>%            # rename first column
+  drop_na(country) %>%               # drop any errant rows with NAs for country
   gather(year, cases, -country) %>%  # reshape df
   mutate_at(vars(-country), funs(str_replace_all(., "'", ""))) %>%  # remove apostrophe thousands separator
   mutate_at(vars(-country), funs(as.integer))                       # convert cases to integer
 
-# Let's make these steps into a function to use in the next step
+# Let's wrap these steps into a function for later use
 clean_web_table <- function(df) {
   df %>%
     as_data_frame() %>% 
     na_if("") %>%            
     rename(country = 1) %>%  
+    drop_na(country) %>%
     gather(year, cases, -country) %>%
     mutate_at(vars(-country), funs(str_replace_all(., "'", ""))) %>%
     mutate_at(vars(-country), funs(as.integer))
@@ -112,7 +114,7 @@ diseases %>%
     clean_web_table(),                          # clean up dfs 
   .id = "disease"                               # name the id column
   )
-#> # A tibble: 43,875 x 4
+#> # A tibble: 43,650 x 4
 #>    disease    country              year cases
 #>    <chr>      <chr>               <int> <int>
 #>  1 diphtheria Afghanistan          2017     1
@@ -125,7 +127,7 @@ diseases %>%
 #>  8 diphtheria Armenia              2017     0
 #>  9 diphtheria Australia            2017     8
 #> 10 diphtheria Austria              2017     0
-#> # ... with 43,865 more rows
+#> # ... with 43,640 more rows
 ```
 
 ### Process spreadsheet data
@@ -144,13 +146,17 @@ these coverage estimates is straightforward to load and clean, as it
 uses consistent wide data structures and lacks many of the usual
 spreadsheet quirks 🥂
 
+Note: I adhere to the [project-oriented
+workflow](https://www.tidyverse.org/articles/2017/12/workflow-vs-script/)
+lifestyle, thus the liberal use of `here::here()` from here onwards.
+
 ``` r
 # grab WHO immunization coverage estimates
 download.file("http://www.who.int/entity/immunization/monitoring_surveillance/data/coverage_estimates_series.xls?ua=1",
-              here("data","coverage_estimates_series.xls"))
+              here("data", "coverage_estimates_series.xls"))
 
 # peek at the sheet names for measles (MCV1) and note any extraneous sheets (Readme; Regional Global estimates)
-here("data","coverage_estimates_series.xls") %>% 
+here("data", "coverage_estimates_series.xls") %>% 
   excel_sheets()
 #>  [1] "Readme WHOUNICEF"          "BCG"                       "DTP1"                     
 #>  [4] "DTP3"                      "HepB_BD"                   "HepB3"                    
@@ -159,7 +165,7 @@ here("data","coverage_estimates_series.xls") %>%
 #> [13] "RCV1"                      "RotaC"                     "YFV"                      
 #> [16] "Regional Global estimates"
 
-read_excel(here("data","coverage_estimates_series.xls"), sheet = "MCV1")
+read_excel(here("data", "coverage_estimates_series.xls"), sheet = "MCV1")
 #> # A tibble: 194 x 42
 #>    Region ISO_code Cname Vaccine `2017` `2016` `2015` `2014` `2013` `2012` `2011` `2010` `2009`
 #>    <chr>  <chr>    <chr> <chr>    <dbl>  <dbl>  <dbl>  <dbl>  <dbl>  <dbl>  <dbl>  <dbl>  <dbl>
@@ -181,11 +187,11 @@ read_excel(here("data","coverage_estimates_series.xls"), sheet = "MCV1")
 #> #   `1981` <dbl>, `1980` <dbl>
 
 # let's reshape, clean the table, and create a dataframe for later use
-measles_cvg_df <- read_excel(here("data","coverage_estimates_series.xls"), sheet = "MCV1") %>% 
+measles_cvg_df <- read_excel(here("data", "coverage_estimates_series.xls"), sheet = "MCV1") %>% 
   gather(year, coverage, -c(1:4)) %>%
   na_if("") %>%
   rename(country = Cname) %>%  
-  clean_names() %>% 
+  clean_names() %>%  # handy function from janitor() to harmonize variable name format
   mutate_at(vars(year, coverage), as.integer) %>% 
   select(-region)
 
@@ -251,7 +257,7 @@ choropleth map to visualize 2017 reported cases and immunization
 coverage for measles.
 
 ``` r
-# prep 2017 cases and coverage data for map
+# prep cases and coverage data (2017) for map
 measles_cases_map_dta <- measles_cases_df %>% 
   mutate(iso_code = countrycode(country, "country.name", "iso3c"),    # key for naturalearth join
          iso_code = replace(iso_code, country == "Eswatini", "SWZ"),  # previously Swaziland
@@ -266,13 +272,14 @@ measles_cvg_map_dta <- measles_cvg_df %>%
 
 # download dataset of latitude/longitude by country for bubble placements
 download.file("https://opendata.socrata.com/api/views/mnkm-8ram/rows.csv?accessType=DOWNLOAD",
-              here("data","lat_lon.csv"))
+              here("data", "lat_lon.csv"))
 
 lat_lon <- read_csv(here("data", "lat_lon.csv")) %>% 
-  select(iso_a3 = `Alpha-3 code`, lat = `Latitude (average)`, lon = `Longitude (average)`)
+  select(iso_a3 = `Alpha-3 code`, lat = `Latitude (average)`, lon = `Longitude (average)`) %>% 
+  add_row(iso_a3 = "SSD", lat = 6.9, lon = 31.3)  # South Sudan was missing
 
 # load naturalearth data
-map_df <- ne_countries(scale = 50, returnclass = "sf") %>% 
+map_dta <- ne_countries(scale = 50, returnclass = "sf") %>% 
   # address some missing iso3 codes
   mutate(iso_a3 = replace(iso_a3, sovereignt == "France", "FRA"),
          iso_a3 = replace(iso_a3, sovereignt == "Denmark", "DNK"),
@@ -284,17 +291,17 @@ map_df <- ne_countries(scale = 50, returnclass = "sf") %>%
   left_join(., lat_lon, by = "iso_a3")
 
 # set palette and tooltip formats
-cvg_pal <- colorBin(palette = "RdYlGn", 
-                    domain = map_df$coverage,
-                    bins = c(0,49,79,89,100),
-                    reverse = FALSE)
-cases_lbl <- str_glue("<b>{map_df$country}</b><br>
-                      Reported cases of measles (2017): {map_df$cases}")
-cvg_lbl   <- str_glue("<b>{map_df$country}</b><br>
-                      MCV1 coverage (2017): {map_df$coverage}%")
+cvg_pal   <- colorBin(palette = "RdYlGn", 
+                      domain = map_dta$coverage,
+                      bins = c(0,49,79,89,100),
+                      reverse = FALSE)
+cases_lbl <- str_glue("<b>{map_dta$country}</b><br>
+                      Reported cases of measles (2017): {map_dta$cases}")
+cvg_lbl   <- str_glue("<b>{map_dta$country}</b><br>
+                      MCV1 coverage (2017): {map_dta$coverage}%")
 
 # build map
-leaflet(data = map_df) %>%
+leaflet(data = map_dta) %>%
   setView(lat = 25, lng = 30, zoom = 2.5) %>%
   addProviderTiles("CartoDB.Positron", group = "Simple") %>%
   # immunization coverage
@@ -316,7 +323,7 @@ leaflet(data = map_df) %>%
     ) %>% 
   addLegend(
     pal = cvg_pal, 
-    values = ~map_df$coverage,
+    values = ~map_dta$coverage,
     title = "Measles (MCV1) coverage, 2017",
     position = "topright", 
     opacity = 0.7,
@@ -333,3 +340,45 @@ interactive `leaflet` maps, here is a static image of the map generated
 from the above code:
 
 ![](images/who_measles_leaflet_static.png)
+
+The hmtl file containing the interactive `leaflet` map can be found
+[here](who-web-scrape.html).
+
+Let’s use the excellent `gganimate` package to create an animated map of
+annually reported measles cases since 2000.
+
+``` r
+# set up measles cases dataframe for mapping
+lat_lon <- read_csv(here("data", "lat_lon.csv")) %>% 
+  select(iso_a3 = `Alpha-3 code`, lat = `Latitude (average)`, lon = `Longitude (average)`) %>% 
+  add_row(iso_a3 = "SSD", lat = 6.9, lon = 31.3)  # South Sudan was missing
+
+map_anim_df <- measles_cases_df %>%  
+  mutate(
+    iso_code = countrycode(country, "country.name", "iso3c"),   # key for lat/lon join
+    iso_code = replace(iso_code, country == "Eswatini", "SWZ")  # previously Swaziland
+    ) %>% 
+  left_join(., lat_lon, by = c("iso_code" = "iso_a3")) %>% 
+  na_if(0) %>%  # suppress zeros as we only want cases
+  filter(year >= 2000)
+           
+# build animated map
+map_anim <- ggplot(data = map_anim_df) +
+  borders(database = "world", colour = "gray85", fill = "gray80") + 
+  geom_point(aes(x = lon, y = lat, size = cases), colour = "red", alpha = 0.4) +
+  scale_size_continuous(labels = scales::comma, 
+                        breaks = c(10,1000,10000,50000,100000,200000),
+                        range = c(1, 10)) + 
+  scale_y_continuous(limits = c(-60, 90)) +  # exclude Antarctica
+  coord_quickmap() + 
+  labs(title = "Measles reported cases, {frame_time}",
+       caption = "Source: WHO vaccine-preventable diseases: monitoring system 2018 global summary",
+       size  = "") +
+  theme_map(base_size = 16) + 
+  transition_time(year)
+
+animate(map_anim, nframes = 18, fps = 1, detail = 2, length = 36, width = 1000)
+anim_save(here("images", "measles_anim.gif"))
+```
+
+![](images/measles_anim.gif)
